@@ -27,3 +27,4 @@ azure-function/obj/
 # Env / secrets
 .env
 *.env
+PORTFOLIO_DETAILS.md
