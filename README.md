@@ -261,7 +261,7 @@ These are strong interview discussion points and demonstrate production-oriented
 ├── k8s/                 # Plain k8s manifests (non-Helm alternative)
 ├── docker-compose.yml   # Local Postgres for the API
 └── docs/                # Architecture diagram, demo
-```
+
 
 ## Running locally — step by step
 
