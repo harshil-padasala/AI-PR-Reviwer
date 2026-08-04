@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ai-pr-reviewer-config
+data:
+  AZURE_SERVICEBUS_QUEUE_NAME: "pr-review-requests"
+  AZURE_OPENAI_API_VERSION: "2024-06-01"
+  # In-cluster DNS name of the api Service defined in api-service.yaml.
+  SPRING_API_CALLBACK_URL: "http://ai-pr-reviewer-api:8080/api/reviews/callback"
+  # Point at an external/managed Postgres instance. There is no in-cluster
+  # Postgres option in these raw manifests (see postgres-dev.yaml for a
+  # dev/test-only alternative) — edit this before applying.
+  DB_URL: "jdbc:postgresql://CHANGE_ME:5432/ai_pr_reviewer"
+  DB_USERNAME: "CHANGE_ME"

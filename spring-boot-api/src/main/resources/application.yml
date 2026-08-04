@@ -30,3 +30,14 @@ azure:
 logging:
   level:
     com.aipr: INFO
+
+management:
+  endpoint:
+    health:
+      probes:
+        enabled: true
+  health:
+    livenessstate:
+      enabled: true
+    readinessstate:
+      enabled: true

@@ -17,7 +17,7 @@ Spring Boot API  ──────────────► persists event, p
         │                     Azure Service Bus Queue
         │                              │
         │                              ▼
-        │                     Azure Function (queue trigger)
+        │                     Worker (queue consumer, containerized)
         │                        1. fetch PR diff (GitHub API)
         │                        2. send diff to Azure OpenAI
         │                        3. parse structured JSON response
@@ -27,15 +27,16 @@ Spring Boot API  ──────────────► persists event, p
    review persisted, viewable via GET /api/reviews
 ```
 
-**Why split the work this way:** the webhook handler needs to respond to GitHub in under 10 seconds or the delivery is marked failed. The actual review (diff fetch + LLM call) can take much longer and shouldn't block that response — so it's handed off to an async, independently-scalable Azure Function via a queue. This is a standard "sync API + async event-driven compute" pattern used for any slow, bursty workload.
+**Why split the work this way:** the webhook handler needs to respond to GitHub in under 10 seconds or the delivery is marked failed. The actual review (diff fetch + LLM call) can take much longer and shouldn't block that response — so it's handed off to an async, independently-scalable worker via a queue. This is a standard "sync API + async event-driven compute" pattern used for any slow, bursty workload.
 
 ## Tech stack
 
 | Layer | Tech |
 |---|---|
-| API | Spring Boot 3, Spring Data JPA, PostgreSQL |
+| API | Spring Boot 3, Spring Data JPA, PostgreSQL, Actuator |
 | Messaging | Azure Service Bus |
-| Compute | Azure Functions (Java, queue trigger) |
+| Compute | Plain Java worker (Azure Service Bus SDK consumer), containerized, runs as a k8s Deployment |
+| Orchestration | Kubernetes — Helm chart (`helm/`) + raw manifests (`k8s/`) |
 | AI | Azure OpenAI (chat completions, JSON-mode) |
 | External API | GitHub REST API (diff fetch, review/comment posting) |
 
@@ -44,7 +45,9 @@ Spring Boot API  ──────────────► persists event, p
 ```
 ai-pr-reviewer/
 ├── spring-boot-api/     # Webhook receiver, persistence, review query API
-├── azure-function/      # Diff fetch + LLM review + comment posting
+├── azure-function/      # Diff fetch + LLM review + comment posting (queue-consuming worker)
+├── helm/ai-pr-reviewer/ # Helm chart (api + worker Deployments, optional Postgres subchart)
+├── k8s/                 # Plain k8s manifests (non-Helm alternative)
 ├── docker-compose.yml   # Local Postgres for the API
 └── docs/                # Architecture diagram, demo
 ```
@@ -209,23 +212,27 @@ Copy the `https://<random>.ngrok-free.app` URL ngrok prints, then in your GitHub
 
 Free ngrok URLs change every restart — re-update the webhook Payload URL if you restart ngrok. Use `http://127.0.0.1:4040` (ngrok's local web inspector) to debug raw request/response if deliveries fail.
 
-### 4. Run the Azure Function
+### 4. Run the worker
 
 ```bash
 cd azure-function
-cp local.settings.json.example local.settings.json
-```
+export AZURE_SERVICEBUS_CONNECTION_STRING=<same-value-used-in-step-2>
+export AZURE_SERVICEBUS_QUEUE_NAME=pr-review-requests   # optional, this is the default
+export GITHUB_API_TOKEN=<same-token-used-in-step-2>
+export AZURE_OPENAI_ENDPOINT=<your-azure-openai-endpoint>
+export AZURE_OPENAI_DEPLOYMENT=<your-azure-openai-deployment>
+export AZURE_OPENAI_API_KEY=<your-azure-openai-key>
+export AZURE_OPENAI_API_VERSION=2024-06-01
+export SPRING_API_CALLBACK_URL=http://localhost:8080/api/reviews/callback
 
-Edit `local.settings.json` and fill in:
-- `AZURE_SERVICEBUS_CONNECTION_STRING` — same value used in step 2
-- `GITHUB_API_TOKEN` — same token used in step 2
-- `AZURE_OPENAI_ENDPOINT`, `AZURE_OPENAI_DEPLOYMENT`, `AZURE_OPENAI_API_KEY`, `AZURE_OPENAI_API_VERSION` — from your Azure OpenAI resource
-- `SPRING_API_CALLBACK_URL` — leave as `http://localhost:8080/api/reviews/callback` for local runs
-
-```bash
 mvn clean package
-mvn azure-functions:run
+java -jar target/azure-function.jar
 ```
+
+This is a plain long-running process (not an Azure Function) that connects
+directly to the Service Bus queue via the Azure SDK. It exposes a health
+endpoint at `http://localhost:8081/healthz` once the queue consumer has
+started.
 
 ### 5. Try it end-to-end
 Open a PR (or push a commit) in the GitHub repo you wired up in step 3. Within a minute you should see:
@@ -238,43 +245,46 @@ Open a PR (or push a commit) in the GitHub repo you wired up in step 3. Within a
 docker-compose down       # stop Postgres (add -v to also wipe the volume/data)
 ```
 
-## Deploying the Azure Function to Azure
+## Deploying with Docker / Kubernetes
 
-Runs the same code as step 4, but on a real Function App in Azure instead of your machine — needed for a webhook flow that isn't tied to your laptop being on.
-
-`azure-function/pom.xml` already defines the target app (`functionAppName`, `functionResourceGroup`, `functionAppRegion` properties, Linux runtime, Java 21) — the plugin creates the Function App automatically on first deploy if it doesn't exist yet.
+Both services are plain containers — build once, run anywhere:
 
 ```bash
-az login
-
-cd azure-function
-mvn clean package
-mvn azure-functions:deploy
+docker build -t ai-pr-reviewer-api:1.0.0 ./spring-boot-api
+docker build -t ai-pr-reviewer-worker:1.0.0 ./azure-function
 ```
 
-The Function App only gets `FUNCTIONS_EXTENSION_VERSION` from `pom.xml` — every other setting from `local.settings.json` (step 4) must be pushed explicitly:
+### Helm (recommended)
 
 ```bash
-az functionapp config appsettings set \
-  --name ai-pr-reviewer-func \
-  --resource-group ai-pr-reviewer-rg \
-  --settings \
-    AZURE_SERVICEBUS_CONNECTION_STRING="<value>" \
-    GITHUB_API_TOKEN="<value>" \
-    AZURE_OPENAI_ENDPOINT="<value>" \
-    AZURE_OPENAI_DEPLOYMENT="<value>" \
-    AZURE_OPENAI_API_KEY="<value>" \
-    AZURE_OPENAI_API_VERSION="<value>" \
-    SPRING_API_CALLBACK_URL="<your-deployed-spring-boot-api-url>/api/reviews/callback"
+cp helm/ai-pr-reviewer/values-secret.yaml.example helm/ai-pr-reviewer/values-secret.yaml
+# fill in values-secret.yaml with real credentials — it's gitignored
+
+helm dependency build helm/ai-pr-reviewer
+helm install ai-pr-reviewer helm/ai-pr-reviewer -f helm/ai-pr-reviewer/values-secret.yaml
 ```
 
-`SPRING_API_CALLBACK_URL` must point at a publicly reachable Spring Boot API (not `localhost`) — either deploy the API too, or keep it reachable via ngrok for a hybrid local/cloud test.
+`postgresql.enabled` defaults to `false` — supply `database.external.{host,port,name,username}`
+for an external/managed Postgres, or set `--set postgresql.enabled=true` (and
+`postgresql.auth.password`) for a dev-only in-cluster instance via the bundled
+Bitnami subchart. See `helm/ai-pr-reviewer/values.yaml` for the full set of
+knobs (replica counts, resources, ingress host, autoscaling).
 
-Tail logs to confirm it's picking up queue messages:
+### Plain manifests (no Helm)
 
 ```bash
-func azure functionapp logstream ai-pr-reviewer-func
+cp k8s/secret.yaml.example k8s/secret.yaml
+# fill in k8s/secret.yaml, edit k8s/configmap.yaml's DB_URL/DB_USERNAME
+
+kubectl apply -f k8s/configmap.yaml -f k8s/secret.yaml
+kubectl apply -f k8s/api-deployment.yaml -f k8s/api-service.yaml -f k8s/api-ingress.yaml
+kubectl apply -f k8s/worker-deployment.yaml
+# dev/test only, not for production:
+kubectl apply -f k8s/postgres-dev.yaml
 ```
+
+The API's Ingress is what GitHub's webhook must reach (`/api/webhooks/github`);
+the worker calls back into the API over its in-cluster Service, not the Ingress.
 
 ## API reference
 

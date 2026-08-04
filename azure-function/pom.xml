@@ -9,24 +9,32 @@
     <version>1.0.0</version>
     <packaging>jar</packaging>
     <name>ai-pr-reviewer-function</name>
-    <description>Queue-triggered Azure Function that fetches PR diffs, calls the LLM, and posts review comments</description>
+    <description>Queue-consuming worker that fetches PR diffs, calls the LLM, and posts review comments</description>
 
     <properties>
         <maven.compiler.source>21</maven.compiler.source>
         <maven.compiler.target>21</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <azure.functions.maven.plugin.version>1.36.0</azure.functions.maven.plugin.version>
-        <azure.functions.java.library.version>3.1.0</azure.functions.java.library.version>
-        <functionAppName>ai-pr-reviewer-func</functionAppName>
-        <functionResourceGroup>ai-pr-reviewer-rg</functionResourceGroup>
-        <functionAppRegion>eastus</functionAppRegion>
+        <azure.messaging.servicebus.version>7.17.5</azure.messaging.servicebus.version>
+        <slf4j.version>2.0.16</slf4j.version>
     </properties>
 
     <dependencies>
         <dependency>
-            <groupId>com.microsoft.azure.functions</groupId>
-            <artifactId>azure-functions-java-library</artifactId>
-            <version>${azure.functions.java.library.version}</version>
+            <groupId>com.azure</groupId>
+            <artifactId>azure-messaging-servicebus</artifactId>
+            <version>${azure.messaging.servicebus.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-api</artifactId>
+            <version>${slf4j.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-simple</artifactId>
+            <version>${slf4j.version}</version>
+            <scope>runtime</scope>
         </dependency>
         <dependency>
             <groupId>com.fasterxml.jackson.core</groupId>
@@ -55,31 +63,33 @@
                 <version>3.13.0</version>
             </plugin>
             <plugin>
-                <groupId>com.microsoft.azure</groupId>
-                <artifactId>azure-functions-maven-plugin</artifactId>
-                <version>${azure.functions.maven.plugin.version}</version>
-                <configuration>
-                    <appName>${functionAppName}</appName>
-                    <resourceGroup>${functionResourceGroup}</resourceGroup>
-                    <region>${functionAppRegion}</region>
-                    <pricingTier>Consumption</pricingTier>
-                    <runtime>
-                        <os>linux</os>
-                        <javaVersion>21</javaVersion>
-                    </runtime>
-                    <appSettings>
-                        <property>
-                            <name>FUNCTIONS_EXTENSION_VERSION</name>
-                            <value>~4</value>
-                        </property>
-                    </appSettings>
-                </configuration>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-shade-plugin</artifactId>
+                <version>3.6.0</version>
                 <executions>
                     <execution>
-                        <id>package-functions</id>
+                        <phase>package</phase>
                         <goals>
-                            <goal>package</goal>
+                            <goal>shade</goal>
                         </goals>
+                        <configuration>
+                            <transformers>
+                                <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
+                                    <mainClass>com.aipr.function.Worker</mainClass>
+                                </transformer>
+                                <transformer implementation="org.apache.maven.plugins.shade.resource.ServicesResourceTransformer" />
+                            </transformers>
+                            <filters>
+                                <filter>
+                                    <artifact>*:*</artifact>
+                                    <excludes>
+                                        <exclude>META-INF/*.SF</exclude>
+                                        <exclude>META-INF/*.DSA</exclude>
+                                        <exclude>META-INF/*.RSA</exclude>
+                                    </excludes>
+                                </filter>
+                            </filters>
+                        </configuration>
                     </execution>
                 </executions>
             </plugin>

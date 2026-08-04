@@ -1,0 +1,48 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ai-pr-reviewer-api
+  labels:
+    app: ai-pr-reviewer-api
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: ai-pr-reviewer-api
+  template:
+    metadata:
+      labels:
+        app: ai-pr-reviewer-api
+    spec:
+      securityContext:
+        runAsNonRoot: true
+      containers:
+        - name: api
+          image: ai-pr-reviewer-api:1.0.0
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8080
+          envFrom:
+            - configMapRef:
+                name: ai-pr-reviewer-config
+            - secretRef:
+                name: ai-pr-reviewer-secrets
+          resources:
+            requests:
+              cpu: 250m
+              memory: 384Mi
+            limits:
+              cpu: "1"
+              memory: 512Mi
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: 8080
+            initialDelaySeconds: 20
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 10

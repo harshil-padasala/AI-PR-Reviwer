@@ -1,0 +1,66 @@
+# DEV/TEST ONLY — not for production use. Mirrors docker-compose.yml's
+# local Postgres for a throwaway/dev cluster. For anything real, use an
+# external/managed Postgres and point ConfigMap's DB_URL/DB_USERNAME +
+# Secret's DB_PASSWORD at it instead.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ai-pr-reviewer-postgres-dev
+  labels:
+    app: ai-pr-reviewer-postgres-dev
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ai-pr-reviewer-postgres-dev
+  template:
+    metadata:
+      labels:
+        app: ai-pr-reviewer-postgres-dev
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:16-alpine
+          env:
+            - name: POSTGRES_DB
+              value: ai_pr_reviewer
+            - name: POSTGRES_USER
+              valueFrom:
+                configMapKeyRef:
+                  name: ai-pr-reviewer-config
+                  key: DB_USERNAME
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: ai-pr-reviewer-secrets
+                  key: DB_PASSWORD
+          ports:
+            - containerPort: 5432
+          volumeMounts:
+            - name: pgdata
+              mountPath: /var/lib/postgresql/data
+      volumes:
+        - name: pgdata
+          persistentVolumeClaim:
+            claimName: ai-pr-reviewer-postgres-dev
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: ai-pr-reviewer-postgres-dev
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ai-pr-reviewer-postgres-dev
+spec:
+  selector:
+    app: ai-pr-reviewer-postgres-dev
+  ports:
+    - port: 5432
+      targetPort: 5432

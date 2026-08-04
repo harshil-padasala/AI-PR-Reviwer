@@ -1,0 +1,45 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "ai-pr-reviewer.worker.fullname" . }}
+  labels:
+    {{- include "ai-pr-reviewer.worker.selectorLabels" . | nindent 4 }}
+spec:
+  {{- if not .Values.worker.autoscaling.enabled }}
+  replicas: {{ .Values.worker.replicaCount }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "ai-pr-reviewer.worker.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "ai-pr-reviewer.worker.selectorLabels" . | nindent 8 }}
+    spec:
+      serviceAccountName: {{ include "ai-pr-reviewer.serviceAccountName" . }}
+      terminationGracePeriodSeconds: 30
+      securityContext:
+        runAsNonRoot: true
+      containers:
+        - name: worker
+          image: "{{ .Values.worker.image.repository }}:{{ .Values.worker.image.tag }}"
+          imagePullPolicy: {{ .Values.worker.image.pullPolicy }}
+          ports:
+            - name: health
+              containerPort: {{ .Values.worker.healthPort }}
+          envFrom:
+            - configMapRef:
+                name: {{ include "ai-pr-reviewer.fullname" . }}-config
+            - secretRef:
+                name: {{ include "ai-pr-reviewer.fullname" . }}-secrets
+          env:
+            - name: HEALTH_PORT
+              value: {{ .Values.worker.healthPort | quote }}
+          resources:
+            {{- toYaml .Values.worker.resources | nindent 12 }}
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: health
+            initialDelaySeconds: 15
+            periodSeconds: 10

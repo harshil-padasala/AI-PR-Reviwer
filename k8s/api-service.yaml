@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: ai-pr-reviewer-api
+  labels:
+    app: ai-pr-reviewer-api
+spec:
+  type: ClusterIP
+  selector:
+    app: ai-pr-reviewer-api
+  ports:
+    - port: 8080
+      targetPort: 8080

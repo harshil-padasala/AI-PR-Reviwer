@@ -1,0 +1,27 @@
+ai-pr-reviewer has been installed.
+
+1. GitHub webhook endpoint:
+{{- if .Values.api.ingress.enabled }}
+   http{{ if .Values.api.ingress.tls.enabled }}s{{ end }}://{{ .Values.api.ingress.host }}/api/webhooks/github
+   Configure this URL + your GITHUB_WEBHOOK_SECRET on the GitHub repo/app webhook settings.
+{{- else }}
+   Ingress is disabled. Expose the API another way, e.g.:
+     kubectl port-forward svc/{{ include "ai-pr-reviewer.api.fullname" . }} 8080:{{ .Values.api.service.port }}
+{{- end }}
+
+2. Database:
+{{- if .Values.postgresql.enabled }}
+   Using the in-cluster Bitnami postgresql subchart (dev/test posture).
+   Make sure postgresql.auth.password is set — the api/worker Secret's
+   DB_PASSWORD is sourced from it.
+{{- else }}
+   postgresql.enabled=false — you must supply database.external.{host,port,name,username}
+   and secrets.dbPassword (via values-secret.yaml or --set) pointing at an
+   external/managed Postgres instance.
+{{- end }}
+
+3. Secrets: githubWebhookSecret, githubApiToken, dbPassword,
+   azureServicebusConnectionString, azureOpenaiEndpoint, azureOpenaiDeployment,
+   azureOpenaiApiKey — copy values-secret.yaml.example to values-secret.yaml
+   (gitignored) and fill in real values before/at install time. See README.md
+   for where to obtain each one.
