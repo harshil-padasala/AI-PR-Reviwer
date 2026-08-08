@@ -1,4 +1,4 @@
-package com.aipr.function.model;
+package com.aipr.lambda.model;
 
 /**
  * One line-level review comment as returned by the LLM.

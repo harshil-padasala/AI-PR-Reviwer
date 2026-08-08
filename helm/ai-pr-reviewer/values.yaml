@@ -27,15 +27,14 @@ api:
     maxReplicas: 5
     targetCPUUtilizationPercentage: 70
   env:
-    azureServicebusQueueName: pr-review-requests
+    awsRegion: us-east-1
 
 worker:
   image:
-    repository: ai-pr-reviewer-worker
+    repository: ai-pr-reviewer-lambda
     tag: "1.0.0"
     pullPolicy: IfNotPresent
   replicaCount: 1
-  healthPort: 8081
   resources:
     requests:
       cpu: 250m
@@ -49,8 +48,8 @@ worker:
     maxReplicas: 3
     targetCPUUtilizationPercentage: 70
   env:
-    azureServicebusQueueName: pr-review-requests
-    azureOpenaiApiVersion: "2024-06-01"
+    awsRegion: us-east-1
+    openaiModel: "gpt-4o-mini"
 
 # Secret-worthy values. Leave blank here and supply via a separate,
 # gitignored values-secret.yaml (see values-secret.yaml.example) or
@@ -59,10 +58,8 @@ secrets:
   githubWebhookSecret: ""
   githubApiToken: ""
   dbPassword: ""
-  azureServicebusConnectionString: ""
-  azureOpenaiEndpoint: ""
-  azureOpenaiDeployment: ""
-  azureOpenaiApiKey: ""
+  awsSqsQueueUrl: ""
+  openaiApiKey: ""
 
 # Used when postgresql.enabled=false (the default / production-safe
 # posture) — point at an external/managed Postgres instance.

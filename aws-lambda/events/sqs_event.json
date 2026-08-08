@@ -1,0 +1,20 @@
+{
+  "Records": [
+    {
+      "messageId": "19dd0b57-b21e-4ac1-bd88-01bbb068cb78",
+      "receiptHandle": "MessageReceiptHandle",
+      "body": "{\"pullRequestEventId\":1,\"repoFullName\":\"octocat/hello-world\",\"prNumber\":42,\"headSha\":\"6dcb09b5b57875f334f61aebed695e2e4193db5e\",\"diffUrl\":\"https://github.com/octocat/hello-world/pull/42.diff\"}",
+      "attributes": {
+        "ApproximateReceiveCount": "1",
+        "SentTimestamp": "1523232000000",
+        "SenderId": "123456789012",
+        "ApproximateFirstReceiveTimestamp": "1523232000001"
+      },
+      "messageAttributes": {},
+      "md5OfBody": "7b270e59b47ff90a553787216d55d91d",
+      "eventSource": "aws:sqs",
+      "eventSourceARN": "arn:aws:sqs:us-east-1:123456789012:pr-review-requests",
+      "awsRegion": "us-east-1"
+    }
+  ]
+}

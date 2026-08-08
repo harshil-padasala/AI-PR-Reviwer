@@ -1,6 +1,6 @@
-package com.aipr.function;
+package com.aipr.lambda;
 
-import com.aipr.function.model.ReviewComment;
+import com.aipr.lambda.model.ReviewComment;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 

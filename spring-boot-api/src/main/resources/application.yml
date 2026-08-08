@@ -22,10 +22,10 @@ github:
   api:
     token: ${GITHUB_API_TOKEN:your-github-api-token}
 
-azure:
-  servicebus:
-    connection-string: ${AZURE_SERVICEBUS_CONNECTION_STRING:your-azure-servicebus-connection-string}
-    queue-name: ${AZURE_SERVICEBUS_QUEUE_NAME:pr-review-requests}
+aws:
+  sqs:
+    queue-url: ${AWS_SQS_QUEUE_URL:https://sqs.us-east-1.amazonaws.com/123456789012/pr-review-requests}
+  region: ${AWS_REGION:us-east-1}
 
 logging:
   level:

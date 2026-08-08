@@ -5,25 +5,31 @@
     <modelVersion>4.0.0</modelVersion>
 
     <groupId>com.aipr</groupId>
-    <artifactId>azure-function</artifactId>
+    <artifactId>aws-lambda</artifactId>
     <version>1.0.0</version>
     <packaging>jar</packaging>
-    <name>ai-pr-reviewer-function</name>
-    <description>Queue-consuming worker that fetches PR diffs, calls the LLM, and posts review comments</description>
+    <name>ai-pr-reviewer-lambda</name>
+    <description>AWS Lambda SQS worker that fetches PR diffs, calls the LLM, and posts review comments</description>
 
     <properties>
         <maven.compiler.source>21</maven.compiler.source>
         <maven.compiler.target>21</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <azure.messaging.servicebus.version>7.17.5</azure.messaging.servicebus.version>
+        <aws.lambda.java.core.version>1.2.3</aws.lambda.java.core.version>
+        <aws.lambda.java.events.version>3.11.6</aws.lambda.java.events.version>
         <slf4j.version>2.0.16</slf4j.version>
     </properties>
 
     <dependencies>
         <dependency>
-            <groupId>com.azure</groupId>
-            <artifactId>azure-messaging-servicebus</artifactId>
-            <version>${azure.messaging.servicebus.version}</version>
+            <groupId>com.amazonaws</groupId>
+            <artifactId>aws-lambda-java-core</artifactId>
+            <version>${aws.lambda.java.core.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.amazonaws</groupId>
+            <artifactId>aws-lambda-java-events</artifactId>
+            <version>${aws.lambda.java.events.version}</version>
         </dependency>
         <dependency>
             <groupId>org.slf4j</groupId>
@@ -55,7 +61,7 @@
     </dependencies>
 
     <build>
-        <finalName>azure-function</finalName>
+        <finalName>aws-lambda</finalName>
         <plugins>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
@@ -74,9 +80,6 @@
                         </goals>
                         <configuration>
                             <transformers>
-                                <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
-                                    <mainClass>com.aipr.function.Worker</mainClass>
-                                </transformer>
                                 <transformer implementation="org.apache.maven.plugins.shade.resource.ServicesResourceTransformer" />
                             </transformers>
                             <filters>

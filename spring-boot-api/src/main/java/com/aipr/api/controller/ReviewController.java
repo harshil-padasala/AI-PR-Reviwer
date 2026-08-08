@@ -17,7 +17,7 @@ import java.util.List;
 
 /**
  * Two responsibilities:
- *  - receives the completed-review callback from the Azure Function
+ *  - receives the completed-review callback from the AWS Lambda worker
  *  - lets a frontend / CLI / recruiter demo fetch review history
  */
 @RestController
@@ -35,7 +35,7 @@ public class ReviewController {
         this.pullRequestEventRepository = pullRequestEventRepository;
     }
 
-    /** Called by the Azure Function once the LLM review is complete. */
+    /** Called by the AWS Lambda worker once the LLM review is complete. */
     @PostMapping("/callback")
     public ResponseEntity<Void> receiveReviewResult(@Valid @RequestBody ReviewCallbackRequest request) {
         PullRequestEvent event = pullRequestEventRepository.findById(request.getPullRequestEventId())

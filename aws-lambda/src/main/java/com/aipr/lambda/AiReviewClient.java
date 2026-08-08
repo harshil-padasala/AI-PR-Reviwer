@@ -1,4 +1,4 @@
-package com.aipr.function;
+package com.aipr.lambda;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -13,7 +13,7 @@ import java.io.IOException;
 import java.util.concurrent.TimeUnit;
 
 /**
- * Thin client around Azure OpenAI's chat completions endpoint.
+ * Thin client around OpenAI chat completions API.
  * Forces the model to return strict JSON so ReviewParser can deserialize
  * it reliably instead of scraping free-form text.
  */
@@ -180,20 +180,15 @@ public class AiReviewClient {
 	private final ObjectMapper mapper = new ObjectMapper();
 
 	private final String endpoint;
-	private final String deployment;
+	private final String model;
 	private final String apiKey;
-	private final String apiVersion;
 
-	public AiReviewClient(
-			String endpoint,
-			String deployment,
-			String apiKey,
-			String apiVersion) {
-
-		this.endpoint = endpoint;
-		this.deployment = deployment;
+	public AiReviewClient(String endpoint, String model, String apiKey) {
+		this.endpoint = (endpoint != null && !endpoint.isBlank())
+				? endpoint
+				: "https://api.openai.com/v1/chat/completions";
+		this.model = (model != null && !model.isBlank()) ? model : "gpt-4o-mini";
 		this.apiKey = apiKey;
-		this.apiVersion = apiVersion;
 
 		this.client = new OkHttpClient.Builder()
 				.connectTimeout(10, TimeUnit.SECONDS)
@@ -202,8 +197,8 @@ public class AiReviewClient {
 	}
 
 	public String reviewDiff(String diff) throws IOException {
-
 		ObjectNode body = mapper.createObjectNode();
+		body.put("model", model);
 
 		var messages = mapper.createArrayNode();
 
@@ -219,24 +214,19 @@ public class AiReviewClient {
 		messages.add(user);
 
 		body.set("messages", messages);
-
-		// GPT-5 uses max_completion_tokens
-		body.put("max_completion_tokens", 500);
+		body.put("max_tokens", 1000);
 
 		// JSON mode
 		ObjectNode responseFormat = mapper.createObjectNode();
 		responseFormat.put("type", "json_object");
 		body.set("response_format", responseFormat);
 
-		String url = String.format(
-				"%s/openai/deployments/%s/chat/completions?api-version=%s",
-				endpoint,
-				deployment,
-				apiVersion);
+		Request.Builder requestBuilder = new Request.Builder().url(endpoint);
+		if (apiKey != null && !apiKey.isBlank()) {
+			requestBuilder.header("Authorization", "Bearer " + apiKey);
+		}
 
-		Request request = new Request.Builder()
-				.url(url)
-				.header("api-key", apiKey)
+		Request request = requestBuilder
 				.post(RequestBody.create(body.toString(), JSON))
 				.build();
 
@@ -246,45 +236,28 @@ public class AiReviewClient {
 
 		JsonNode content = root.path("choices")
 				.path(0)
-				.path("message")
-				.path("content");
+                .path("message")
+                .path("content");
 
-		// Older Chat Completions format
 		if (content.isTextual()) {
 			return content.asText();
 		}
 
-		// Newer GPT-5 format
-		if (content.isArray()
-				&& !content.isEmpty()
-				&& content.get(0).has("text")) {
+		if (content.isArray() && !content.isEmpty() && content.get(0).has("text")) {
 			return content.get(0).get("text").asText();
 		}
 
-		throw new IOException(
-				"Unexpected response format:\n" + responseBody);
+		throw new IOException("Unexpected response format:\n" + responseBody);
 	}
 
 	private static final int MAX_RETRIES = 4;
 
 	private String executeWithRetry(Request request, ObjectNode body) throws IOException {
-
 		IOException lastError = null;
 
 		for (int attempt = 0; attempt <= MAX_RETRIES; attempt++) {
-
 			try (Response response = client.newCall(request).execute()) {
-
-				String responseBody =
-						response.body() != null
-								? response.body().string()
-								: "";
-
-				System.out.println("Request URL:");
-				System.out.println("--------------------------------------");
-				System.out.println(body.toPrettyString());
-				System.out.println("HTTP Status: " + response.code());
-				System.out.println(responseBody);
+				String responseBody = response.body() != null ? response.body().string() : "";
 
 				if (response.isSuccessful()) {
 					return responseBody;
@@ -293,15 +266,10 @@ public class AiReviewClient {
 				boolean retryable = response.code() == 429 || response.code() >= 500;
 
 				if (!retryable || attempt == MAX_RETRIES) {
-					throw new IOException(
-							"Azure OpenAI call failed: HTTP "
-									+ response.code()
-									+ "\n"
-									+ responseBody);
+					throw new IOException("OpenAI call failed: HTTP " + response.code() + "\n" + responseBody);
 				}
 
-				lastError = new IOException(
-						"Azure OpenAI call failed: HTTP " + response.code() + "\n" + responseBody);
+				lastError = new IOException("OpenAI call failed: HTTP " + response.code() + "\n" + responseBody);
 
 				sleep(retryDelayMillis(response, attempt));
 			}
@@ -311,14 +279,12 @@ public class AiReviewClient {
 	}
 
 	private static long retryDelayMillis(Response response, int attempt) {
-
 		String retryAfter = response.header("Retry-After");
 
 		if (retryAfter != null) {
 			try {
 				return Long.parseLong(retryAfter.trim()) * 1000L;
 			} catch (NumberFormatException ignored) {
-				// fall through to exponential backoff
 			}
 		}
 

@@ -31,7 +31,7 @@ This reduces review latency, improves consistency, and allows engineers to focus
 
 ### 🧠 AI-Powered Analysis
 
-* Azure OpenAI powered review generation
+* OpenAI API powered review generation
 * Structured JSON output for deterministic processing
 * Security, bug, and maintainability focused prompts
 
@@ -44,9 +44,9 @@ This reduces review latency, improves consistency, and allows engineers to focus
 ### ☁️ Cloud-Native Design
 
 * Spring Boot API
-* Azure Service Bus
-* Azure Functions
-* Azure OpenAI
+* Amazon SQS
+* AWS Lambda
+* OpenAI API
 * PostgreSQL
 
 ---
@@ -66,17 +66,17 @@ GitHub Pull Request
         │ Publish Event
         ▼
 ┌─────────────────────────────┐
-│ Azure Service Bus Queue     │
+│ Amazon SQS Queue            │
 └─────────────────────────────┘
         │
         ▼
 ┌─────────────────────────────┐
-│ Azure Function              │
+│ AWS Lambda Worker           │
 │ Review Processor            │
 └─────────────────────────────┘
         │
         ├─ Fetch PR Diff
-        ├─ Call Azure OpenAI
+        ├─ Call OpenAI API
         ├─ Generate Findings
         ├─ Post GitHub Comments
         │
@@ -128,12 +128,12 @@ The API:
 * Persists the event
 * Publishes a queue message
 
-### 3️⃣ Azure Function Processes Review
+### 3️⃣ AWS Lambda Worker Processes Review
 
-The function:
+The worker:
 
 * Fetches the PR diff
-* Sends the diff to Azure OpenAI
+* Sends the diff to OpenAI API
 * Parses structured review output
 * Creates GitHub review comments
 
@@ -162,12 +162,12 @@ GitHub PR opened/updated
         ▼
 Spring Boot API  ──────────────► persists event, publishes to queue
         │                              │
-        │                     Azure Service Bus Queue
+        │                     Amazon SQS Queue
         │                              │
         │                              ▼
-        │                     Worker (queue consumer, containerized)
+        │                     AWS Lambda Worker (SQS Event Source)
         │                        1. fetch PR diff (GitHub API)
-        │                        2. send diff to Azure OpenAI
+        │                        2. send diff to OpenAI API
         │                        3. parse structured JSON response
         │                        4. post review comments (GitHub API)
         ◄──────────────────────  5. POST result back to Spring Boot API
@@ -182,10 +182,10 @@ Spring Boot API  ──────────────► persists event, p
 | Layer | Tech |
 |---|---|
 | API | Spring Boot 3, Spring Data JPA, PostgreSQL, Actuator |
-| Messaging | Azure Service Bus |
-| Compute | Plain Java worker (Azure Service Bus SDK consumer), containerized, runs as a k8s Deployment |
-| Orchestration | Kubernetes — Helm chart (`helm/`) + raw manifests (`k8s/`) |
-| AI | Azure OpenAI (chat completions, JSON-mode) |
+| Messaging | Amazon SQS |
+| Compute | AWS Lambda (Java 21 RequestHandler event-driven worker) |
+| Orchestration | AWS SAM (`aws-lambda/template.yaml`) / Kubernetes Helm chart (`helm/`) |
+| AI | OpenAI API (chat completions, JSON-mode) |
 | External API | GitHub REST API (diff fetch, review/comment posting) |
 
 ## Project structure
@@ -197,10 +197,11 @@ ai-pr-reviewer/
 │   ├── Review Persistence
 │   └── Query APIs
 │
-├── azure-function/
+├── aws-lambda/
 │   ├── Diff Fetching
 │   ├── LLM Review Engine
-│   └── Comment Publishing
+│   ├── Comment Publishing
+│   └── AWS SAM Template & SQS Event Payload
 │
 ├── docker-compose.yml
 └── docs/
@@ -216,9 +217,9 @@ Based on project structure defined in the repository.
 | ----------- | ----------------- |
 | Backend API | Spring Boot 3     |
 | Persistence | PostgreSQL        |
-| Messaging   | Azure Service Bus |
-| Compute     | Azure Functions   |
-| AI          | Azure OpenAI      |
+| Messaging   | Amazon SQS        |
+| Compute     | AWS Lambda        |
+| AI          | OpenAI API        |
 | Integration | GitHub REST API   |
 
 Source:
@@ -255,8 +256,8 @@ These are strong interview discussion points and demonstrate production-oriented
 ---
 * Automated pull request analysis and inline review generation through LLM-powered code inspection.
 * Built secure webhook verification, structured AI response handling, and scalable queue-based processing.
-├── spring-boot-api/     # Webhook receiver, persistence, review query API
-├── azure-function/      # Diff fetch + LLM review + comment posting (queue-consuming worker)
+├── spring-boot-api/     # Webhook receiver, persistence, review query API, SQS publisher
+├── aws-lambda/          # SQS-triggered Lambda worker (diff fetch + LLM review + comment posting)
 ├── helm/ai-pr-reviewer/ # Helm chart (api + worker Deployments, optional Postgres subchart)
 ├── k8s/                 # Plain k8s manifests (non-Helm alternative)
 ├── docker-compose.yml   # Local Postgres for the API
@@ -269,7 +270,7 @@ These are strong interview discussion points and demonstrate production-oriented
 - Java 21+, Maven
 - Docker (for local Postgres)
 - [ngrok](https://ngrok.com) (or similar) to expose your local API to GitHub's webhook delivery
-- An Azure subscription (Service Bus namespace + Function App + Azure OpenAI resource) — needed for the full end-to-end flow, not for just running the API
+- An AWS Account (Amazon SQS queue + AWS Lambda) & [AWS SAM CLI](https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/install-sam-cli.html)
 - A GitHub repo you can add a webhook to, and a personal access token with `repo` scope
 
 ### Getting your credentials
@@ -279,101 +280,30 @@ Every value below is required somewhere in steps 1-4. What it is, why the projec
 | Credential | What it is | Why needed | Where to get it |
 |---|---|---|---|
 | `GITHUB_WEBHOOK_SECRET` | A shared secret string you invent yourself — not issued by GitHub | Spring Boot API uses it to verify the HMAC signature on incoming webhook payloads, so only real GitHub deliveries (not a random POST from anyone) trigger a review | Make one up yourself, e.g. `openssl rand -hex 20`. Same string goes into the API env var **and** the GitHub webhook's "Secret" field |
-| `GITHUB_API_TOKEN` | GitHub personal access token | Both the API and the Azure Function call GitHub's REST API (fetch PR diff, post review comments) — that needs authentication | GitHub → click your profile picture → **Settings** → **Developer settings** (bottom of left sidebar) → **Personal access tokens** → **Tokens (classic)** → **Generate new token (classic)** → check the `repo` scope → **Generate token** → copy it immediately, it's shown only once. Direct link: https://github.com/settings/tokens |
+| `GITHUB_API_TOKEN` | GitHub personal access token | Both the API and the AWS Lambda worker call GitHub's REST API (fetch PR diff, post review comments) — that needs authentication | GitHub → click your profile picture → **Settings** → **Developer settings** (bottom of left sidebar) → **Personal access tokens** → **Tokens (classic)** → **Generate new token (classic)** → check the `repo` scope → **Generate token** → copy it immediately, it's shown only once. Direct link: https://github.com/settings/tokens |
 | ngrok URL | A public HTTPS URL that tunnels to your local `localhost:8080` | GitHub's webhook delivery needs a public internet address to POST to — it can't reach your laptop's `localhost` directly | Install ngrok, run `ngrok config add-authtoken <token>` once (token from https://dashboard.ngrok.com/get-started/your-authtoken after free signup at https://dashboard.ngrok.com/signup), then run `ngrok http 8080` — the `https://<random>.ngrok-free.app` line it prints (also visible at `http://127.0.0.1:4040`) is your URL. It changes every time you restart ngrok unless you're on a paid plan with a reserved domain |
-| `AZURE_SERVICEBUS_CONNECTION_STRING` | Connection string for an Azure Service Bus namespace + queue | The API publishes each webhook event onto this queue; the Azure Function consumes from it — this is the async hand-off described in [Architecture](#architecture) | Azure CLI — see [Create Service Bus via CLI](#create-service-bus-via-cli) below |
-| `AZURE_OPENAI_ENDPOINT`, `AZURE_OPENAI_DEPLOYMENT`, `AZURE_OPENAI_API_KEY`, `AZURE_OPENAI_API_VERSION` | Azure OpenAI resource details | The Azure Function sends the PR diff to this deployment to generate the structured JSON review | Azure CLI — see [Create Azure OpenAI via CLI](#create-azure-openai-via-cli) below |
-| `SPRING_API_CALLBACK_URL` | URL the Azure Function POSTs its finished review back to | Closes the loop — persists the review result and makes it queryable via `GET /api/reviews/{eventId}` | Not fetched from anywhere — for local runs it's just `http://localhost:8080/api/reviews/callback` (the Spring Boot API running on your machine) |
+| `AWS_SQS_QUEUE_URL` | Amazon SQS Queue URL (e.g. `https://sqs.us-east-1.amazonaws.com/123456789012/pr-review-requests`) | The API publishes each webhook event onto this queue; AWS Lambda consumes from it — this is the async hand-off described in [Architecture](#architecture) | AWS CLI or AWS SAM output — see [Create SQS Queue via AWS CLI](#create-sqs-queue-via-aws-cli) below |
+| `AWS_REGION` | AWS Region (e.g. `us-east-1`) | Specifies the region for the AWS SQS SDK client | Your target AWS region (defaults to `us-east-1`) |
+| `OPENAI_API_KEY` | OpenAI API Key | The AWS Lambda worker sends the PR diff to OpenAI API to generate structured JSON reviews | OpenAI Platform Settings → [API Keys](https://platform.openai.com/api-keys) |
+| `OPENAI_MODEL` | OpenAI Model Name | Target LLM model for PR code review | Default is `gpt-4o-mini` (or `gpt-4o`) |
+| `SPRING_API_CALLBACK_URL` | URL the AWS Lambda worker POSTs its finished review back to | Closes the loop — persists the review result and makes it queryable via `GET /api/reviews/{eventId}` | For local runs it's `http://localhost:8080/api/reviews/callback` (or your deployed API public URL) |
 
-#### Create Service Bus via CLI
-
-```bash
-az login
-
-az group create \
-  --name ai-pr-reviewer-rg \
-  --location eastus
-
-# namespace name must be globally unique
-az servicebus namespace create \
-  --resource-group ai-pr-reviewer-rg \
-  --name ai-pr-reviewer-sb-<yourinitials> \
-  --location eastus \
-  --sku Basic
-
-az servicebus queue create \
-  --resource-group ai-pr-reviewer-rg \
-  --namespace-name ai-pr-reviewer-sb-<yourinitials> \
-  --name pr-review-requests
-
-# this is the value for AZURE_SERVICEBUS_CONNECTION_STRING
-az servicebus namespace authorization-rule keys list \
-  --resource-group ai-pr-reviewer-rg \
-  --namespace-name ai-pr-reviewer-sb-<yourinitials> \
-  --name RootManageSharedAccessKey \
-  --query primaryConnectionString \
-  --output tsv
-```
-
-Queue name must match `AZURE_SERVICEBUS_QUEUE_NAME` (defaults to `pr-review-requests` — leave that env var unset to use the default).
-
-#### Create Azure OpenAI via CLI
-
-Requires your subscription to have Azure OpenAI access approved (request at https://aka.ms/oai/access if `az cognitiveservices account create` below errors with an access-denied message).
+#### Create SQS Queue via AWS CLI
 
 ```bash
-# resource name must be globally unique. Run once — fails if it already exists.
-az cognitiveservices account create \
-  --name ai-pr-reviewer-openai-<yourinitials> \
-  --resource-group ai-pr-reviewer-rg \
-  --kind OpenAI \
-  --sku S0 \
-  --location eastus \
-  --yes
+aws configure   # ensure your AWS CLI is authenticated
 
-# deploy a model — this is AZURE_OPENAI_DEPLOYMENT
-# fails if the deployment already exists, or if your subscription lacks quota
-az cognitiveservices account deployment create \
-  --name ai-pr-reviewer-openai-<yourinitials> \
-  --resource-group ai-pr-reviewer-rg \
-  --deployment-name gpt-5-mini \
-  --model-name gpt-5-mini \
-  --model-version "2025-08-07" \
-  --model-format OpenAI \
-  --sku-name GlobalStandard \
-  --sku-capacity 50
+aws sqs create-queue \
+  --queue-name pr-review-requests \
+  --region us-east-1
 
-# this is AZURE_OPENAI_ENDPOINT
-az cognitiveservices account show \
-  --name ai-pr-reviewer-openai-<yourinitials> \
-  --resource-group ai-pr-reviewer-rg \
-  --query properties.endpoint \
-  --output tsv
-
-# this is AZURE_OPENAI_API_KEY
-az cognitiveservices account keys list \
-  --name ai-pr-reviewer-openai-<yourinitials> \
-  --resource-group ai-pr-reviewer-rg \
-  --query key1 \
-  --output tsv
-
-# verify the deployment exists — name only
-az cognitiveservices account deployment list \
-  --name ai-pr-reviewer-openai-<yourinitials> \
-  --resource-group ai-pr-reviewer-rg \
-  --query "[].name" \
-  --output tsv
-
-# or full detail (name, model, sku, ...) as a table
-az cognitiveservices account deployment list \
-  --resource-group ai-pr-reviewer-rg \
-  --name ai-pr-reviewer-openai-<yourinitials> \
-  --output table
+# get the QueueUrl value for AWS_SQS_QUEUE_URL
+aws sqs --profile myprofile get-queue-url \
+  --queue-name pr-review-requests \
+  --region us-east-1 \
+  --query QueueUrl \
+  --output text
 ```
-
-`AZURE_OPENAI_API_VERSION` isn't fetched via CLI — use whatever API version matches your model, e.g. `2024-06-01` (check https://learn.microsoft.com/azure/ai-services/openai/reference for the current list).
-
-**Changing a deployment's capacity:** Azure CLI has no `deployment update` command — it fails with `'update' is misspelled or not recognized by the system`. To change capacity, either use Azure AI Foundry/Portal, or delete the deployment and recreate it with the `deployment create` command above (recreating fails if the old deployment still exists, or if you lack quota for the new capacity).
 
 ### 1. Clone and start Postgres
 
@@ -395,7 +325,8 @@ export DB_USERNAME=postgres
 export DB_PASSWORD=postgres
 export GITHUB_WEBHOOK_SECRET=<pick-any-secret-string>
 export GITHUB_API_TOKEN=<your-github-personal-access-token>
-export AZURE_SERVICEBUS_CONNECTION_STRING=<your-service-bus-connection-string>
+export AWS_SQS_QUEUE_URL=<your-aws-sqs-queue-url>
+export AWS_REGION=us-east-1
 mvn spring-boot:run
 ```
 
@@ -423,49 +354,108 @@ Copy the `https://<random>.ngrok-free.app` URL ngrok prints, then in your GitHub
 
 Free ngrok URLs change every restart — re-update the webhook Payload URL if you restart ngrok. Use `http://127.0.0.1:4040` (ngrok's local web inspector) to debug raw request/response if deliveries fail.
 
-### 4. Run the worker
+### 4. Run and test the AWS Lambda worker locally
+
+You can test the Lambda handler locally using the **AWS SAM CLI** before deploying to cloud infrastructure:
 
 ```bash
-cd azure-function
-export AZURE_SERVICEBUS_CONNECTION_STRING=<same-value-used-in-step-2>
-export AZURE_SERVICEBUS_QUEUE_NAME=pr-review-requests   # optional, this is the default
-export GITHUB_API_TOKEN=<same-token-used-in-step-2>
-export AZURE_OPENAI_ENDPOINT=<your-azure-openai-endpoint>
-export AZURE_OPENAI_DEPLOYMENT=<your-azure-openai-deployment>
-export AZURE_OPENAI_API_KEY=<your-azure-openai-key>
-export AZURE_OPENAI_API_VERSION=2024-06-01
-export SPRING_API_CALLBACK_URL=http://localhost:8080/api/reviews/callback
+cd aws-lambda
 
+# 1. Package the Lambda Jar
 mvn clean package
-java -jar target/azure-function.jar
+
+# 2. Invoke the Lambda locally with a sample SQS event
+sam local invoke PRReviewerLambdaFunction -e events/sqs_event.json
 ```
 
-This is a plain long-running process (not an Azure Function) that connects
-directly to the Service Bus queue via the Azure SDK. It exposes a health
-endpoint at `http://localhost:8081/healthz` once the queue consumer has
-started.
+This runs the Java 21 Lambda worker inside a containerized local runtime environment, simulates an SQS event trigger, fetches the PR diff, calls the LLM, and posts review comments back to GitHub.
 
-### 5. Try it end-to-end
-Open a PR (or push a commit) in the GitHub repo you wired up in step 3. Within a minute you should see:
-- A new row in `pull_request_events` (status `QUEUED` → `COMPLETED`)
-- An AI-generated review comment thread on the PR itself
-- `GET http://localhost:8080/api/reviews/{eventId}` returning the structured result
+---
 
-### Tearing down
+## 🚀 Deploying AWS Lambda & SQS to AWS
+
+You have two simple options to deploy the worker and queue to production on AWS:
+
+### Option A: Deploy using AWS SAM CLI (Recommended)
+
+The `aws-lambda/template.yaml` defines the serverless architecture (SQS queue, DLQ, IAM permissions, Lambda function, and event source mapping):
+
 ```bash
-docker-compose down       # stop Postgres (add -v to also wipe the volume/data)
+cd aws-lambda
+
+# Build the SAM application
+sam build
+
+# Deploy interactively to AWS
+sam deploy --guided \
+  --stack-name ai-pr-reviewer \
+  --region us-east-1 \
+  --parameter-overrides \
+    GitHubApiToken="<your-github-token>" \
+    SpringApiCallbackUrl="https://<your-api-domain>/api/reviews/callback" \
+    OpenAiApiKey="<your-openai-api-key>" \
+    OpenAiModel="gpt-4o-mini"
 ```
 
-## Deploying with Docker / Kubernetes
+SAM will automatically provision:
+- SQS Standard Queue (`pr-review-requests`) & Dead Letter Queue (`pr-review-requests-dlq`).
+- AWS Lambda Function (`ai-pr-reviewer-worker`) configured with Java 21 runtime.
+- SQS Event Source Mapping (triggers Lambda whenever a message arrives).
+
+### Option B: Manual AWS CLI Deployment
+
+If you prefer using the AWS CLI directly:
+
+```bash
+# 1. Create IAM execution role for Lambda
+aws iam create-role \
+  --role-name AIPrReviewerLambdaRole \
+  --assume-role-policy-document '{
+    "Version": "2012-10-17",
+    "Statement": [{
+      "Effect": "Allow",
+      "Principal": { "Service": "lambda.amazonaws.com" },
+      "Action": "sts:AssumeRole"
+    }]
+  }'
+
+aws iam attach-role-policy \
+  --role-name AIPrReviewerLambdaRole \
+  --policy-arn arn:aws:iam::aws:policy/service-role/AWSLambdaSQSQueueExecutionRole
+
+# 2. Package the Lambda JAR
+cd aws-lambda && mvn clean package
+
+# 3. Create the Lambda function
+aws lambda create-function \
+  --function-name ai-pr-reviewer-worker \
+  --runtime java21 \
+  --role arn:aws:iam::<YOUR_ACCOUNT_ID>:role/AIPrReviewerLambdaRole \
+  --handler com.aipr.lambda.LambdaHandler::handleRequest \
+  --zip-file fileb://target/aws-lambda.jar \
+  --timeout 60 \
+  --memory-size 512 \
+  --environment "Variables={GITHUB_API_TOKEN=<token>,SPRING_API_CALLBACK_URL=<url>,OPENAI_API_KEY=<openai_key>,OPENAI_MODEL=gpt-4o-mini}"
+
+# 4. Map the SQS queue trigger to Lambda
+aws lambda create-event-source-mapping \
+  --function-name ai-pr-reviewer-worker \
+  --batch-size 1 \
+  --event-source-arn arn:aws:sqs:us-east-1:<YOUR_ACCOUNT_ID>:pr-review-requests
+```
+
+---
+
+## Deploying Spring Boot API with Docker / Kubernetes
 
 Both services are plain containers — build once, run anywhere:
 
 ```bash
 docker build -t ai-pr-reviewer-api:1.0.0 ./spring-boot-api
-docker build -t ai-pr-reviewer-worker:1.0.0 ./azure-function
+docker build -t ai-pr-reviewer-lambda:1.0.0 ./aws-lambda
 ```
 
-### Helm (recommended)
+### Helm (recommended for Spring Boot API)
 
 ```bash
 cp helm/ai-pr-reviewer/values-secret.yaml.example helm/ai-pr-reviewer/values-secret.yaml
@@ -489,9 +479,6 @@ cp k8s/secret.yaml.example k8s/secret.yaml
 
 kubectl apply -f k8s/configmap.yaml -f k8s/secret.yaml
 kubectl apply -f k8s/api-deployment.yaml -f k8s/api-service.yaml -f k8s/api-ingress.yaml
-kubectl apply -f k8s/worker-deployment.yaml
-# dev/test only, not for production:
-kubectl apply -f k8s/postgres-dev.yaml
 ```
 
 The API's Ingress is what GitHub's webhook must reach (`/api/webhooks/github`);
@@ -502,7 +489,7 @@ the worker calls back into the API over its in-cluster Service, not the Ingress.
 | Endpoint | Method | Purpose |
 |---|---|---|
 | `/api/webhooks/github` | POST | GitHub webhook receiver (HMAC-verified) |
-| `/api/reviews/callback` | POST | Internal — Azure Function posts results here |
+| `/api/reviews/callback` | POST | Internal — AWS Lambda worker posts results here |
 | `/api/reviews/{eventId}` | GET | Fetch a specific review result |
 | `/api/reviews` | GET | List all reviewed pull requests |
 

@@ -1,0 +1,74 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: AWS SAM Template for AI PR Reviewer Lambda Worker and SQS Queue
+
+Parameters:
+  GitHubApiToken:
+    Type: String
+    NoEcho: true
+    Description: GitHub API Token for reading diffs and posting review comments
+  SpringApiCallbackUrl:
+    Type: String
+    Description: URL of the Spring Boot API callback endpoint (e.g. http://api.example.com/api/reviews/callback)
+  OpenAiApiKey:
+    Type: String
+    NoEcho: true
+    Description: API Key for OpenAI service
+  OpenAiModel:
+    Type: String
+    Default: "gpt-4o-mini"
+    Description: OpenAI Model (e.g. gpt-4o-mini, gpt-4o)
+  OpenAiEndpoint:
+    Type: String
+    Default: "https://api.openai.com/v1/chat/completions"
+    Description: Endpoint URL for OpenAI API
+
+Resources:
+  PRReviewDLQ:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: pr-review-requests-dlq
+      MessageRetentionPeriod: 1209600 # 14 days
+
+  PRReviewQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: pr-review-requests
+      VisibilityTimeout: 90
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt PRReviewDLQ.Arn
+        maxReceiveCount: 3
+
+  PRReviewerLambdaFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: ai-pr-reviewer-worker
+      CodeUri: ./target/aws-lambda.jar
+      Handler: com.aipr.lambda.LambdaHandler::handleRequest
+      Runtime: java21
+      MemorySize: 512
+      Timeout: 60
+      Environment:
+        Variables:
+          GITHUB_API_TOKEN: !Ref GitHubApiToken
+          SPRING_API_CALLBACK_URL: !Ref SpringApiCallbackUrl
+          OPENAI_API_KEY: !Ref OpenAiApiKey
+          OPENAI_MODEL: !Ref OpenAiModel
+          OPENAI_ENDPOINT: !Ref OpenAiEndpoint
+      Events:
+        SQSEventSource:
+          Type: SQS
+          Properties:
+            Queue: !GetAtt PRReviewQueue.Arn
+            BatchSize: 1
+
+Outputs:
+  QueueUrl:
+    Description: URL of the SQS Queue
+    Value: !Ref PRReviewQueue
+  QueueArn:
+    Description: ARN of the SQS Queue
+    Value: !GetAtt PRReviewQueue.Arn
+  LambdaFunctionArn:
+    Description: ARN of the Lambda Function
+    Value: !GetAtt PRReviewerLambdaFunction.Arn
