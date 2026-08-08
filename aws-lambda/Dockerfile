@@ -9,7 +9,7 @@ RUN mvn -B -DskipTests package
 FROM eclipse-temurin:21-jre-alpine
 RUN addgroup -S app && adduser -S app -G app
 WORKDIR /app
-COPY --from=builder /build/target/azure-function.jar app.jar
+COPY --from=builder /build/target/aws-lambda.jar app.jar
 USER app
 EXPOSE 8081
 ENTRYPOINT ["java", "-jar", "/app/app.jar"]

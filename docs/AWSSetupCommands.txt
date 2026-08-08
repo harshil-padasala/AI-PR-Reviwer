@@ -1,0 +1,37 @@
+# -----------------------------------------------------------------------------
+# AWS CLI Commands for SQS and Lambda Setup
+# -----------------------------------------------------------------------------
+
+# 1. Create SQS Queue and Dead-Letter Queue (DLQ)
+aws sqs create-queue --queue-name pr-review-requests-dlq --region us-east-1
+
+# Query DLQ ARN
+aws sqs get-queue-attributes \
+  --queue-url https://sqs.us-east-1.amazonaws.com/<YOUR_ACCOUNT_ID>/pr-review-requests-dlq \
+  --attribute-names QueueArn
+
+# Create main queue with redrive policy
+aws sqs create-queue \
+  --queue-name pr-review-requests \
+  --region us-east-1 \
+  --attributes '{
+    "VisibilityTimeout": "90",
+    "RedrivePolicy": "{\"deadLetterTargetArn\":\"<DLQ_ARN>\",\"maxReceiveCount\":\"3\"}"
+  }'
+
+# Get main queue URL
+aws sqs get-queue-url --queue-name pr-review-requests --region us-east-1 --output tsv
+
+# -----------------------------------------------------------------------------
+# 2. Deploy AWS Lambda using AWS SAM CLI (Recommended)
+# -----------------------------------------------------------------------------
+cd aws-lambda
+sam build
+sam deploy --guided \
+  --stack-name ai-pr-reviewer \
+  --region us-east-1 \
+  --parameter-overrides \
+    GitHubApiToken="<your-github-token>" \
+    SpringApiCallbackUrl="https://<your-api-domain>/api/reviews/callback" \
+    OpenAiApiKey="<your-openai-api-key>" \
+    OpenAiModel="gpt-4o-mini"

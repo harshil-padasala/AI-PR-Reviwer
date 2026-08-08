@@ -1,4 +1,4 @@
-package com.aipr.function;
+package com.aipr.lambda;
 
 import okhttp3.OkHttpClient;
 import okhttp3.Request;

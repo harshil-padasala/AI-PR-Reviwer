@@ -4,7 +4,7 @@ import jakarta.persistence.*;
 import java.time.Instant;
 
 /**
- * The structured result the Azure Function sends back after the LLM has
+ * The structured result the AWS Lambda worker sends back after the LLM has
  * reviewed a diff. `commentsJson` stores the raw structured array of
  * {file, line, severity, comment} objects the AI produced, so the API
  * doesn't need to know about the AI provider's response shape.

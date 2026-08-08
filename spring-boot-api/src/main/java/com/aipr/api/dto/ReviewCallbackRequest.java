@@ -4,9 +4,9 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 
 /**
- * Payload the Azure Function POSTs back to the Spring Boot API once the
+ * Payload the AWS Lambda worker POSTs back to the Spring Boot API once the
  * LLM review is complete. `commentsJson` is the raw structured JSON array
- * produced by the model (already validated/parsed by the Function).
+ * produced by the model (already validated/parsed by the worker).
  */
 public class ReviewCallbackRequest {
 

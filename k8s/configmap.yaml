@@ -3,8 +3,8 @@ kind: ConfigMap
 metadata:
   name: ai-pr-reviewer-config
 data:
-  AZURE_SERVICEBUS_QUEUE_NAME: "pr-review-requests"
-  AZURE_OPENAI_API_VERSION: "2024-06-01"
+  AWS_REGION: "us-east-1"
+  OPENAI_MODEL: "gpt-4o-mini"
   # In-cluster DNS name of the api Service defined in api-service.yaml.
   SPRING_API_CALLBACK_URL: "http://ai-pr-reviewer-api:8080/api/reviews/callback"
   # Point at an external/managed Postgres instance. There is no in-cluster

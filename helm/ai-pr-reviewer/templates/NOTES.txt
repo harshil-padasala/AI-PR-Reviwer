@@ -21,7 +21,6 @@ ai-pr-reviewer has been installed.
 {{- end }}
 
 3. Secrets: githubWebhookSecret, githubApiToken, dbPassword,
-   azureServicebusConnectionString, azureOpenaiEndpoint, azureOpenaiDeployment,
-   azureOpenaiApiKey — copy values-secret.yaml.example to values-secret.yaml
+   awsSqsQueueUrl, openaiApiKey — copy values-secret.yaml.example to values-secret.yaml
    (gitignored) and fill in real values before/at install time. See README.md
    for where to obtain each one.

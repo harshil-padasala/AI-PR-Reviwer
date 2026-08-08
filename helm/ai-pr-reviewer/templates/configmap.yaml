@@ -5,8 +5,8 @@ metadata:
   labels:
     {{- include "ai-pr-reviewer.labels" . | nindent 4 }}
 data:
-  AZURE_SERVICEBUS_QUEUE_NAME: {{ .Values.worker.env.azureServicebusQueueName | quote }}
-  AZURE_OPENAI_API_VERSION: {{ .Values.worker.env.azureOpenaiApiVersion | quote }}
+  AWS_REGION: {{ .Values.api.env.awsRegion | quote }}
+  OPENAI_MODEL: {{ .Values.worker.env.openaiModel | quote }}
   SPRING_API_CALLBACK_URL: {{ include "ai-pr-reviewer.callbackUrl" . | quote }}
   DB_URL: {{ include "ai-pr-reviewer.dbUrl" . | quote }}
   DB_USERNAME: {{ include "ai-pr-reviewer.dbUsername" . | quote }}
